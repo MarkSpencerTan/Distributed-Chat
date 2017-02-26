@@ -169,9 +169,11 @@ public class Chat {
 							System.out.println("Enter the port you would like to join: ");
 							int port = scan.nextInt();
 							
+							oos = joinPort(ip, port);
+							
 							JSONObject joinobj = createJoinMsg(alias, port);
 							oos.writeObject(joinobj.toString());
-
+							
 							break;
 						case 2:
 							// Create a standalone chat room
@@ -195,6 +197,14 @@ public class Chat {
 			}
 			/* TODO Use mutex to handle race condition when reading and writing the global variable (ipSuccessor, 
 				portSuccessor, ipPredecessor, portPredecessor)*/
+		}
+		
+		private static ObjectOutputStream joinPort(InetAddress ip, int port){
+			Socket socket = new Socket(ip, port);
+			ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+			System.out.println("Connecting to port "+port);
+			
+			return oos;
 		}
 	}
   
