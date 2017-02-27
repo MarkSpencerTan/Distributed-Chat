@@ -6,8 +6,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Scanner;
 /*****************************//**
 * \brief It implements a distributed chat. 
@@ -15,67 +13,16 @@ import java.util.Scanner;
 * using flooding 
 **********************************/
 public class Chat {
-
-/*
-   Json Messages:
- 
-  {
-        "type" :  "JOIN",
-        "parameters" :
-               {   
-                    "myAlias" : string,
-                    "myPort"  : number
-               }
-   }
- 
-   {
-        "type" :  "ACCEPT",
-        "parameters" :
-               {   
-                   "ipPred"    : string,
-                   "portPred"  : number
-               }
-    }
- 
-    {
-         "type" :  "LEAVE",
-         "parameters" :
-         {
-             "ipPred"    : string,
-             "portPred"  : number
-         }
-    }
-
-   {
-         "type" :  "Put",
-        "parameters" :
-         {
-             "aliasSender"    : string,
-             "aliasReceiver"  : string,
-             "message"        : string
-        }
-   }
- 
- {
-        "type" :  "NEWSUCCESSOR",
-        "parameters" :
-        {
-            "ipSuccessor"    : string,
-            "portSuccessor"  : number
-        }
- }
- */
-
 	// My info
-	public static String myAlias;
-	public static int myPort;
-	public static String myIp;
+	private static String myAlias;
+	private static int myPort;
+	private static String myIp;
 	// Successor
-	public static String ipSuccessor;
-	public static int portSuccessor;
+	private static String ipSuccessor;
+	private static int portSuccessor;
 	// Predecessor
-	public static String ipPredecessor;
-	public static int portPredecessor;
+	private static String ipPredecessor;
+	private static int portPredecessor;
 
 	    
   /*new class - Server===================================================================================================================*/
@@ -117,8 +64,15 @@ public class Chat {
 					//switch case based on the message type
 					switch(type){
 						case "JOIN":
-							JSONObject accept_message = createAcceptMsg(ipPredecessor, portPredecessor);
-							oos.writeObject(accept_message.toString());
+							int client_port = client_message.getJSONObject("parameters").getInt("myPort");
+							// Reply back with an ACCEPT message
+							oos.writeObject(JSONMessage("ACCEPT", myAlias, portPredecessor).toString());
+							portPredecessor = client_port;
+							break;
+						case "NEWSUCCESSOR":
+							portSuccessor = client_message.getJSONObject("parameters").getInt("portSuccessor");
+							oos.writeObject(JSONMessage("ACCEPT", myAlias, myPort).toString());
+							break;
 					}
 
 					// close streams
@@ -127,7 +81,6 @@ public class Chat {
 
 					clntSock.close();
 				}
-				
 			}catch(IOException e){
 				e.printStackTrace();
 			}catch(ClassNotFoundException e){
@@ -136,33 +89,14 @@ public class Chat {
 				e.printStackTrace();
 			}
 		}//end server run
-
-		// Creates a JSON Message for accepting a join
-		private JSONObject createAcceptMsg(String ip_pred, int port_pred){
-			JSONObject  obj = new JSONObject();
-
-			try{
-				obj.put("type","ACCEPT");
-				Map<String, Object> t = new HashMap<>();
-				t.put("ipPred", ip_pred);
-				t.put("portPred", port_pred);
-				obj.put("parameters",t);
-
-			}catch(JSONException e){
-				e.printStackTrace();
-			}
-
-			return obj;
-		}
 	}//end Server class
 
 /*new class - client ================================================================================================================*/
     
-/*****************************//*
-* \brief It implements the client
-**********************************/
-  //private class Client implements Runnable {       
- 	private static class Client implements Runnable {       
+	/******************************
+	* \brief It implements the client
+	**********************************/
+ 	private static class Client implements Runnable {
 		
 		private Scanner scan;
 		
@@ -173,36 +107,37 @@ public class Chat {
 			scan  = new Scanner(System.in);
 		}
 
-	/*****************************//**
+	/*******************************
 	* \brief It allows the user to interact with the system. 
 	**********************************/    
 		public void run(){
-			joinPort(myIp, myPort, myAlias);
+			//joinPort(myIp, myPort, myAlias);
 
 			while (true) {
-
 				try {
 					// Basic User Interface to send messages to the server
-					System.out.println("Send a message:\n 1) JOIN\n 2) CREATE\n 3) LEAVE");
+					System.out.println("\nSend a message:\n 1) PUT\n 2) JOIN\n 3) LEAVE\n 4) GET STATUS");
 					int user_option = scan.nextInt();
 					scan.nextLine(); //consumes return char
 
 					switch(user_option){
 						case 1:
+
+							break;
+						case 2:
 							System.out.println("Enter your Alias: ");
 							String alias = scan.nextLine();
 							System.out.println("Enter the port you would like to join: ");
 							int port = scan.nextInt();
-							
-							joinPort(myIp, port, alias);
-							break;
-						case 2:
-							// Connect to your own server socket
-							joinPort(myIp, myPort, myAlias);
+
+							joinChat(myIp, port, alias);
 
 							break;	
 						case 3:
 							// Leave the room
+							break;
+						case 4:
+							getStatus();
 							break;
 					}
 
@@ -220,23 +155,11 @@ public class Chat {
 				portSuccessor, ipPredecessor, portPredecessor)*/
 		}
 		
-		private void joinPort(String ip, int port, String alias){
+		private void joinChat(String ip, int port, String alias){
 			try{
-				Socket socket = new Socket(ip, port);
-				System.out.println("Client connected to server: "+socket.getRemoteSocketAddress());
+				JSONObject join_msg = JSONMessage("JOIN", myAlias, myPort);
+				JSONObject server_message = serverConnect(ip, port, join_msg);
 
-				// Create streams
-				oos = new ObjectOutputStream(socket.getOutputStream());
-				ois = new ObjectInputStream(socket.getInputStream());
-
-				JSONObject joinobj = createJoinMsg(alias, myPort);
-				oos.writeObject(joinobj.toString());
-
-				// Wait for Server Response
-				String server_response = ois.readObject().toString();
-
-				//Parse message from Server
-				JSONObject server_message = new JSONObject(server_response);
 				String type = server_message.getString("type");
 				System.out.println("Server Sends " + type + " message");
 
@@ -247,48 +170,64 @@ public class Chat {
 
 					// parse params from the message to get new predecessors
 					JSONObject parameters = server_message.getJSONObject("parameters");
-					ipPredecessor = parameters.getString("ipPred");
-					portPredecessor = parameters.getInt("portPred");
+					int server_port_pred = parameters.getInt("portPred");
+					String server_ip_pred = parameters.getString("ipPred");
+
+					// Check that the predecessor we get is not 0/null
+					if(server_port_pred != 0) {
+						portPredecessor = server_port_pred;
+						ipPredecessor = server_ip_pred;
+
+						// send a NEWSUCCESSOR message to the predecessor
+						JSONObject successor_msg = JSONMessage("NEWSUCCESSOR", myAlias, myPort);
+						serverConnect(ipPredecessor, portPredecessor, successor_msg);
+					}
 				}
 				else
 					System.out.println("Could not join the server");
 
-				socket.close();
-
-			}catch(IOException e){
-				e.printStackTrace();
-			}catch (ClassNotFoundException e){
-				e.printStackTrace();
 			}catch (JSONException e){
 				e.printStackTrace();
 			}
 		}
 
-		// Creates a JSON Message to join a chat
-		private JSONObject createJoinMsg(String alias, int port){
-			JSONObject  obj = new JSONObject();
-
+		private JSONObject serverConnect(String ip, int port, JSONObject msg){
+			JSONObject response = null;
 			try{
-				obj.put("type","JOIN");
-				Map<String, Object> t = new HashMap<String, Object>();
-				t.put("myAlias", alias);
-				t.put("myPort", port);
-				obj.put("parameters",t);
+				Socket socket = new Socket(ip, port);
+				System.out.println("Client connected to server: "+socket.getRemoteSocketAddress());
 
+				// Create streams
+				oos = new ObjectOutputStream(socket.getOutputStream());
+				ois = new ObjectInputStream(socket.getInputStream());
+
+				// Send message to server
+				oos.writeObject(msg.toString());
+
+				// Wait for Server Response
+				String server_response = ois.readObject().toString();
+
+				//Parse message from Server
+				response = new JSONObject(server_response);
+
+				socket.close();
+			}catch(IOException e){
+				e.printStackTrace();
+			}catch(ClassNotFoundException e){
+				e.printStackTrace();
 			}catch(JSONException e){
 				e.printStackTrace();
 			}
-
-			return obj;
+			return response;
 		}
 	}
   
   
-/*****************************//**
-* Starts the threads with the client and server:
-* \param Id unique identifier of the process
-* \param port where the server will listen
-**********************************/  
+	/*******************************
+	* Starts the threads with the client and server:
+	* \param Id unique identifier of the process
+	* \param port where the server will listen
+	**********************************/
 	public Chat(String myAlias, int myPort) {
 
 		this.myAlias = myAlias;
@@ -296,8 +235,8 @@ public class Chat {
 		this.myIp = "127.0.0.1"; //set default to localhost for now
 		this.ipPredecessor = myIp;
 		this.ipSuccessor = myIp;
-		this.portPredecessor = myPort;
-		this.portSuccessor = myPort;
+		this.portPredecessor = 0;
+		this.portSuccessor = 0;
 
 		// Initialization of the peer
 		Thread server = new Thread(new Server());
@@ -307,11 +246,68 @@ public class Chat {
 		try {
 			client.join();
 			server.join();
-		} catch (InterruptedException e)
-		{
-			// Handle Exception
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
 	}
+
+
+	public static void getStatus(){
+		System.out.println("\n====================");
+		System.out.println("Alias: " + myAlias);
+		System.out.println("Port: " + myPort);
+		System.out.println("ipPredecessor: " + ipPredecessor);
+		System.out.println("portPredecessor: " + portPredecessor);
+		System.out.println("ipSuccessor: " + ipSuccessor);
+		System.out.println("portSuccessor: " + portSuccessor);
+		System.out.println("====================\n");
+	}
+
+
+	// Creates a JSON Message
+	public static JSONObject JSONMessage(String type, String alias, int port, String... msgArgs){
+		JSONObject  obj = new JSONObject();
+		JSONObject params = new JSONObject();
+		try {
+			obj.put("type",type);
+			obj.put("parameters", params);
+		} catch (JSONException e1) {
+			e1.printStackTrace();
+		}
+
+		if (type.equals("JOIN")){
+			try{
+				params.put("myAlias", alias);
+				params.put("myPort", port);
+			}catch(JSONException e){
+				e.printStackTrace();
+			}
+		}else if (type.equals("ACCEPT") || type.equals("LEAVE")){
+			try{
+				params.put("ipPred", myIp);
+				params.put("portPred", port);
+			}catch(JSONException e){
+				e.printStackTrace();
+			}
+		}else if(type.equals("NEWSUCCESSOR")){
+			try{
+				params.put("ipSuccessor", myIp);
+				params.put("portSuccessor", port);
+			}catch(JSONException e){
+				e.printStackTrace();
+			}
+		}else if(type.equals("PUT")){
+			try{
+				params.put("aliasSender", alias);
+				params.put("aliasReceiver", msgArgs[0]);
+				params.put("message", msgArgs[1]);
+			}catch(JSONException e){
+				e.printStackTrace();
+			}
+		}
+		return obj;
+	}
+
 
 	public static void main(String[] args) throws JSONException {
 
@@ -320,26 +316,10 @@ public class Chat {
 		}
 
 		Chat chat = new Chat(args[0], Integer.parseInt(args[1]));
-
-//		Chat chat = new Chat("127.0.0.1",555);
-
-		// https://www.codevoila.com/post/65/java-json-tutorial-and-example-json-java-orgjson
-		/*String json = "";
-		ArrayList<String> types = new ArrayList<String>();
-		JSONArray jArray = (JSONArray) new JSONTokener(json).nextValue(); //creates JSON OBJECT array
-		for(int x = 0; x < jArray.length(); x++) {
-		  JSONObject object = jArray.getJSONObject(x);
-		  types.add(object.getString("type"));
-		}*/
-
 	}
 	
 
 }
-
-
-
-
 
 // mutex example
 
@@ -350,4 +330,3 @@ _mutex.lock();
 // your protected code here
 
 _mutex.unlock();*/
-
